@@ -1,0 +1,109 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+:root {
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #111318;
+  --border: #e5e4e7;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --social-bg: rgba(244, 243, 236, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  --sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+}
+
+#root {
+  width: 100%;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Material Symbols configuration */
+.material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    display: inline-block;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    direction: ltr;
+}
+
+.tonal-shift {
+    background: linear-gradient(180deg, #111318 0%, #0C0E12 100%);
+}
+
+.primary-gradient {
+    background: linear-gradient(135deg, #ADC6FF 0%, #4D8EFF 100%);
+}
+
+.premium-gradient {
+    background: linear-gradient(135deg, #adc6ff 0%, #4d8eff 100%);
+}
+
+.text-glow {
+    text-shadow: 0 0 15px rgba(173, 198, 255, 0.4);
+}
+
+.glass-panel {
+    background: rgba(40, 42, 46, 0.8);
+    backdrop-filter: blur(20px);
+}
+
+.glow-button:hover {
+    box-shadow: 0 0 12px rgba(173, 198, 255, 0.3);
+}
+
+.primary-glow:hover {
+    box-shadow: 0 0 12px rgba(173, 198, 255, 0.2);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333539;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 170, 0.5);
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #333539;
+  border-radius: 10px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #333539 transparent;
+}

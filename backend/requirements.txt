@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-multipart
+httpx
+python-dotenv
+google-generativeai
+openai-whisper
+transformers
+torch
+sentencepiece
+PyPDF2
+python-docx
+Pillow
+pytesseract
