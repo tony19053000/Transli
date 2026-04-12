@@ -325,7 +325,7 @@ export default function FileTranslation({
           original: normalizeAudioText(data.transcript),
           translated: normalizeAudioText(actualTranslation),
           audio: audioUrl, filename, type: 'audio',
-          detectedLang: actualSourceTag !== 'auto' ? actualSourceTag : null,
+          detectedLang: (autoDetect && actualSourceTag !== 'auto') ? actualSourceTag : null,
         };
         setResult(newResult);
 
@@ -364,7 +364,7 @@ export default function FileTranslation({
         const newResult = {
           original: data.original_text, translated: actualTranslation,
           audio: null, filename, type: isImageFile(filename) ? 'image' : 'text',
-          detectedLang: actualSourceTag !== 'auto' ? actualSourceTag : null,
+          detectedLang: (autoDetect && actualSourceTag !== 'auto') ? actualSourceTag : null,
         };
         setResult(newResult);
 
@@ -393,7 +393,7 @@ export default function FileTranslation({
     setIsSummarizing(true);
     setErrorMsg('');
     const formData = new FormData();
-    formData.append('text', result.translated);
+    formData.append('text', result.original);
     formData.append('translation_provider', translationProvider);
     try {
       const res = await fetch('http://localhost:8000/api/summarize', { method: 'POST', body: formData });
@@ -439,7 +439,7 @@ export default function FileTranslation({
       setResult(prev => ({
         ...prev,
         translated: actualTranslation,
-        detectedLang: actualSourceTag !== 'auto' ? actualSourceTag : prev?.detectedLang,
+        detectedLang: autoDetect ? (actualSourceTag !== 'auto' ? actualSourceTag : prev?.detectedLang) : null,
       }));
       setStatus('done');
 
@@ -768,13 +768,12 @@ export default function FileTranslation({
 
           {/* ── Summary Card ── */}
           {summary && (
-            <div className="bg-primary-container/10 rounded-2xl border border-primary/20 p-6 flex flex-col gap-3 shadow-sm relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[50px] rounded-full -mr-16 -mt-16 pointer-events-none"></div>
+            <div className="bg-surface-container-low rounded-2xl border border-primary/20 p-6 flex flex-col gap-3 shadow-sm relative">
                <div className="flex items-center gap-2">
                  <span className="material-symbols-outlined text-primary text-sm">summarize</span>
                  <h4 className="text-xs font-bold text-primary uppercase tracking-widest m-0">Document Summary</h4>
                </div>
-               <p className="text-on-surface text-sm leading-relaxed m-0 relative z-10">{summary}</p>
+               <p className="text-[#E2E2E8] text-sm leading-relaxed m-0">{summary}</p>
             </div>
           )}
 
@@ -784,7 +783,7 @@ export default function FileTranslation({
               <div className="flex items-center justify-between border-b border-outline-variant/10 px-6 py-3 bg-gradient-to-r from-surface-container-lowest/50 to-transparent">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span className="text-[11px] font-black text-on-surface-variant tracking-widest uppercase">{result?.type === 'audio' ? 'Transcript' : 'Original Text'}</span>
-                  {result?.detectedLang && <span className="text-[10px] font-bold text-tertiary bg-tertiary-container/10 px-2 py-0.5 rounded-sm uppercase tracking-widest">Detected: {result.detectedLang}</span>}
+                  {result?.detectedLang && <span className="text-[10px] font-extrabold text-tertiary bg-tertiary/20 px-2.5 py-1 rounded-lg border border-tertiary/30 shadow-[0_0_8px_rgba(79,220,162,0.15)] uppercase tracking-wider">Detected: {result.detectedLang}</span>}
                   {!result?.detectedLang && autoDetect && result && <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container-highest px-2 py-0.5 rounded-sm uppercase tracking-widest">Auto-detect</span>}
                   {!autoDetect && result && <span className="text-[10px] font-bold text-on-surface-variant bg-surface-container-highest px-2 py-0.5 rounded-sm uppercase tracking-widest">{langName(sourceLang)}</span>}
                 </div>
@@ -917,7 +916,7 @@ export default function FileTranslation({
                   <label className="text-[10px] text-on-surface-variant/70 font-semibold ml-1">Source Language</label>
                   <label className="flex items-center gap-2 cursor-pointer group">
                     <input type="checkbox" className="sr-only peer" checked={autoDetect} onChange={(e) => setAutoDetect(e.target.checked)} />
-                    <div className="w-7 h-4 bg-surface-container border border-outline-variant/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary/80 peer-checked:border-primary"></div>
+                    <div className="relative w-7 h-4 bg-surface-container border border-outline-variant/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-on-surface-variant peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary/80 peer-checked:border-primary"></div>
                     <span className="text-[10px] font-bold text-on-surface-variant group-hover:text-on-surface transition-colors">Auto-detect</span>
                   </label>
                 </div>
@@ -925,7 +924,7 @@ export default function FileTranslation({
                   <div className="w-full bg-primary/5 border border-primary/20 rounded-xl text-sm py-3 px-4 flex items-center gap-2">
                     <span className="material-symbols-outlined text-primary text-sm animate-pulse">auto_awesome</span>
                     <span className="font-bold text-primary text-xs">Auto-detecting...</span>
-                    {result?.detectedLang && <span className="ml-auto text-[10px] font-bold text-on-primary-container bg-primary/20 px-2 py-0.5 rounded-md">{result.detectedLang}</span>}
+                    {result?.detectedLang && <span className="ml-auto text-[10px] font-extrabold text-tertiary bg-tertiary/20 px-2.5 py-1 rounded-lg border border-tertiary/30 shadow-[0_0_8px_rgba(79,220,162,0.15)] uppercase tracking-wider">{result.detectedLang}</span>}
                   </div>
                 ) : (
                   <div className="relative group">

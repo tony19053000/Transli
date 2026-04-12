@@ -1,24 +1,42 @@
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import asyncio
+import threading
 import torch
+from typing import Optional as _Optional
 
-_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-_DTYPE  = torch.float16 if _DEVICE == "cuda" else torch.float32
+if not torch.cuda.is_available():
+    raise RuntimeError("NLLB requires a CUDA GPU. No GPU detected.")
+_DEVICE = "cuda"
+_DTYPE  = torch.float16
 
 # Global cache for NLLB
 _nllb_cache = {}
+_nllb_lock = threading.Lock()
+
+# Semaphore to serialize GPU inference — NLLB model.generate() is not thread-safe
+# when called concurrently from multiple threads on the same model instance.
+# This prevents concurrent GPU calls from corrupting each other's outputs and
+# avoids OOM from stacking beam-search activations.
+_nllb_inference_semaphore: _Optional[asyncio.Semaphore] = None
+
+def _get_inference_semaphore() -> asyncio.Semaphore:
+    global _nllb_inference_semaphore
+    if _nllb_inference_semaphore is None:
+        _nllb_inference_semaphore = asyncio.Semaphore(1)
+    return _nllb_inference_semaphore
 
 def get_nllb_resources():
     model_name = "facebook/nllb-200-distilled-600M"
-    if model_name not in _nllb_cache:
-        print(f"[DEBUG NLLB] Loading model on {_DEVICE} (dtype={_DTYPE}): {model_name}")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_name, torch_dtype=_DTYPE)
-        model = model.to(_DEVICE)
-        model.eval()
-        _nllb_cache[model_name] = (model, tokenizer)
-    else:
-        print(f"[DEBUG NLLB] Using cached model in memory for: {model_name}")
+    with _nllb_lock:
+        if model_name not in _nllb_cache:
+            print(f"[DEBUG NLLB] Loading model on {_DEVICE} (dtype={_DTYPE}): {model_name}")
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForSeq2SeqLM.from_pretrained(model_name, dtype=_DTYPE)
+            model = model.to(_DEVICE)
+            model.eval()
+            _nllb_cache[model_name] = (model, tokenizer)
+        else:
+            print(f"[DEBUG NLLB] Using cached model in memory for: {model_name}")
     return _nllb_cache[model_name]
 
 # NLLB FLORES-200 language codes for all supported languages
@@ -186,30 +204,25 @@ async def translate_nllb(text: str, source_lang: str, target_lang: str, glossary
                         **inputs,
                         forced_bos_token_id=tgt_token_id,
                         max_length=max_len,
-                        num_beams=4,
-                        length_penalty=1.0,
+                        num_beams=8,
+                        length_penalty=1.2,
                         repetition_penalty=1.3,
-                        early_stopping=True,
+                        early_stopping=False,
                     )
                 return tokenizer.batch_decode(translated_tokens, skip_special_tokens=True)[0]
 
-            res: str = ""
-            full_len = _tok_len(tokenizer, text, src_lang_code)
-            if full_len <= _NLLB_TOKEN_LIMIT:
-                # Input fits in one pass — translate directly.
-                res = _translate_chunk(text)
-            else:
-                # Input exceeds the safe token window; split into chunks, translate
-                # each in order, then rejoin. No content is skipped or dropped.
-                print(f"[DEBUG NLLB] Input is {full_len} tokens (>{_NLLB_TOKEN_LIMIT}); splitting into chunks...")
-                chunks = _chunk_for_nllb(tokenizer, text, src_lang_code)
-                print(f"[DEBUG NLLB] Translating {len(chunks)} chunk(s)...")
-                res = " ".join(_translate_chunk(c) for c in chunks)
+            # Always split by sentences — translating multiple sentences together
+            # causes NLLB to silently drop earlier sentences. Each sentence
+            # gets its own inference pass so nothing is lost.
+            chunks = _chunk_for_nllb(tokenizer, text, src_lang_code)
+            print(f"[DEBUG NLLB] Translating {len(chunks)} chunk(s)...")
+            res = " ".join(_translate_chunk(c) for c in chunks)
 
             print(f"[DEBUG NLLB] Generation successful: {res[:20]}...")
             return res
 
-        result = await loop.run_in_executor(None, _load_and_infer)
+        async with _get_inference_semaphore():
+            result = await loop.run_in_executor(None, _load_and_infer)
         result = result.strip()
         
         if glossary and glossary.strip():

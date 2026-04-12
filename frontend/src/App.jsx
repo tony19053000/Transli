@@ -37,6 +37,7 @@ export default function App() {
     setHistory(loadHistory());
   }, []);
 
+
   // ── History handlers ──────────────────────────────────────────────────────
 
   const handleSaveHistory = (entry) => {

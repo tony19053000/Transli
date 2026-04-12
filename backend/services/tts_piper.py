@@ -8,6 +8,9 @@ import wave
 from pathlib import Path
 
 from piper.voice import PiperVoice
+from piper.config import PiperConfig
+import onnxruntime
+import json as _json
 
 _VOICES_DIR = Path(__file__).parent.parent / "piper_voices"
 
@@ -43,10 +46,19 @@ def get_piper_voice(lang: str) -> PiperVoice | None:
             return None
 
         print(f"[PIPER] Loading voice: {model_name}")
-        _voice_cache[model_name] = PiperVoice.load(
-            str(onnx_path),
-            config_path=str(json_path),
-            use_cuda=False,   # CPU — GPU is reserved for Whisper + NLLB
+        with open(str(json_path), "r", encoding="utf-8") as f:
+            config_dict = _json.load(f)
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.intra_op_num_threads = 4
+        sess_options.inter_op_num_threads = 1
+        sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_PARALLEL
+        _voice_cache[model_name] = PiperVoice(
+            config=PiperConfig.from_dict(config_dict),
+            session=onnxruntime.InferenceSession(
+                str(onnx_path),
+                sess_options=sess_options,
+                providers=["CPUExecutionProvider"],
+            ),
         )
         print(f"[PIPER] Voice ready: {model_name}")
 

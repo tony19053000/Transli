@@ -1,6 +1,7 @@
 import whisper
 import asyncio
 import os
+import threading
 import torch
 
 # Max GPU throughput settings (Ampere / RTX 30xx series)
@@ -11,15 +12,17 @@ _DEVICE = "cuda"
 
 # Global model cache to avoid reloading on every request
 _model_cache = {}
+_whisper_lock = threading.Lock()
 
 def get_whisper_model(model_name="base", device: str | None = None):
     resolved_device = device or _DEVICE
     cache_key = (model_name, resolved_device)
-    if cache_key not in _model_cache:
-        print(f"[DEBUG WHISPER] Loading model: {model_name}.pt on {resolved_device}")
-        _model_cache[cache_key] = whisper.load_model(model_name, device=resolved_device)
-    else:
-        print(f"[DEBUG WHISPER] Using cached model: {model_name}.pt on {resolved_device}")
+    with _whisper_lock:
+        if cache_key not in _model_cache:
+            print(f"[DEBUG WHISPER] Loading model: {model_name}.pt on {resolved_device}")
+            _model_cache[cache_key] = whisper.load_model(model_name, device=resolved_device)
+        else:
+            print(f"[DEBUG WHISPER] Using cached model: {model_name}.pt on {resolved_device}")
     return _model_cache[cache_key]
 
 # Whisper uses ISO 639-1 codes. App uses BCP-47 for Chinese variants — normalize here.

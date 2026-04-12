@@ -77,6 +77,7 @@ export default function QuickTranslate({
   const [errorMsg, setErrorMsg] = useState('');
   const [copiedId, setCopiedId] = useState(null);
   const [savedToHistory, setSavedToHistory] = useState(initialDraft.savedToHistory || false);
+  const [timing, setTiming] = useState(null);
 
   // ── Audio refs (per-result) ──
   const audioRefs = useRef({});
@@ -157,6 +158,7 @@ export default function QuickTranslate({
       setEditedTranscript('');
       setDetectedLang(null);
       setResults([]);
+      setTiming(null);
       setSavedToHistory(false);
     } catch (err) {
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -223,6 +225,7 @@ export default function QuickTranslate({
     setEditedTranscript('');
     setDetectedLang(null);
     setResults([]);
+    setTiming(null);
     setSavedToHistory(false);
     setStatus('Translating…');
     await runTranslation(null, text);
@@ -323,6 +326,7 @@ export default function QuickTranslate({
       setEditedTranscript(finalTranscript);
       if (parsedDetectedLang) setDetectedLang(parsedDetectedLang);
       setResults(fetchedResults);
+      setTiming(data.timing || null);
       setStatus('Completed');
       setErrorMsg('');
 
@@ -572,8 +576,8 @@ export default function QuickTranslate({
     }
     activeRequestId.current++;
 
-    setTranscript(''); setEditedTranscript(''); setResults([]); 
-    setErrorMsg(''); setDetectedLang(null); setStatus('Ready');
+    setTranscript(''); setEditedTranscript(''); setResults([]);
+    setErrorMsg(''); setDetectedLang(null); setTiming(null); setStatus('Ready');
     setTypedText(''); setIsEditingTranscript(false); setSavedToHistory(false);
     Object.values(audioRefs.current).forEach(a => { try { a.pause(); } catch(e) {} });
     audioRefs.current = {};
@@ -835,6 +839,16 @@ export default function QuickTranslate({
 
           {/* Bottom Panel: Translation Results */}
           <section className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4">
+            {/* Timing Bar */}
+            {timing && (
+              <div className="flex items-center gap-4 px-4 py-2 bg-surface-container-lowest/60 border border-outline-variant/10 rounded-xl text-[11px] font-mono text-on-surface-variant flex-wrap">
+                <span className="text-on-surface-variant/50 font-bold uppercase tracking-widest">Timing</span>
+                {timing.stt_time > 0 && <span>STT <span className="text-primary font-bold">{timing.stt_time.toFixed(2)}s</span></span>}
+                {timing.translation_time != null && <span>Translate <span className="text-secondary font-bold">{timing.translation_time.toFixed(2)}s{timing.lang_count > 1 ? ` ×${timing.lang_count}` : ''}</span></span>}
+                {timing.tts_time != null && <span>TTS <span className="text-tertiary font-bold">{timing.tts_time.toFixed(2)}s{timing.lang_count > 1 ? ` ×${timing.lang_count}` : ''}</span></span>}
+                <span className="ml-auto">Total <span className="text-on-surface font-bold">{timing.total_time?.toFixed(2)}s</span></span>
+              </div>
+            )}
             {results.length > 0 ? results.map((result, idx) => (
               <div key={idx} className="bg-surface-container-low rounded-2xl border border-outline-variant/10 shadow-lg flex flex-col overflow-hidden shrink-0">
                 <div className="flex items-center justify-between border-b border-outline-variant/10 px-6 py-3 bg-gradient-to-r from-surface-container-lowest/50 to-transparent">
@@ -896,7 +910,7 @@ export default function QuickTranslate({
                   <label className="text-[10px] text-on-surface-variant/70 font-semibold ml-1">Source Language</label>
                   <label className="flex items-center gap-2 cursor-pointer group">
                     <input type="checkbox" className="sr-only peer" checked={autoDetect} onChange={(e) => setAutoDetect(e.target.checked)} />
-                    <div className="w-7 h-4 bg-surface-container border border-outline-variant/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary/80 peer-checked:border-primary"></div>
+                    <div className="relative w-7 h-4 bg-surface-container border border-outline-variant/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-on-surface-variant peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary/80 peer-checked:border-primary"></div>
                     <span className="text-[10px] font-bold text-on-surface-variant group-hover:text-on-surface transition-colors">Auto-detect</span>
                   </label>
                 </div>
@@ -904,7 +918,7 @@ export default function QuickTranslate({
                   <div className="w-full bg-primary/5 border border-primary/20 rounded-xl text-sm py-3 px-4 flex items-center gap-2">
                     <span className="material-symbols-outlined text-primary text-sm animate-pulse">auto_awesome</span>
                     <span className="font-bold text-primary text-xs">Auto-detecting...</span>
-                    {detectedLang && <span className="ml-auto text-[10px] font-bold text-on-primary-container bg-primary/20 px-2 py-0.5 rounded-md">{detectedLang}</span>}
+                    {detectedLang && <span className="ml-auto text-[10px] font-extrabold text-tertiary bg-tertiary/20 px-2.5 py-1 rounded-lg border border-tertiary/30 shadow-[0_0_8px_rgba(79,220,162,0.15)] uppercase tracking-wider">{detectedLang}</span>}
                   </div>
                 ) : (
                   <div className="relative group">
@@ -944,7 +958,7 @@ export default function QuickTranslate({
                       setMultiTargetOn(e.target.checked);
                       if (e.target.checked && selectedTargets.length === 0) setSelectedTargets([targetLang]);
                     }} />
-                    <div className="w-7 h-4 bg-surface-container border border-outline-variant/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-on-surface-variant peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-secondary/80 peer-checked:border-secondary"></div>
+                    <div className="relative w-7 h-4 bg-surface-container border border-outline-variant/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-on-surface-variant peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-secondary/80 peer-checked:border-secondary"></div>
                     <span className="text-[10px] font-bold text-on-surface-variant group-hover:text-on-surface transition-colors">Multiple</span>
                   </label>
                 </div>

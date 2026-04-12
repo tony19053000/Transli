@@ -4,6 +4,8 @@ import io
 import httpx
 from config import Config
 
+_http_client = httpx.AsyncClient(timeout=30.0)
+
 LANG_MAP_GTTS = {
     # Indian
     "en": "en", "hi": "hi", "bn": "bn", "te": "te", "mr": "mr",
@@ -43,11 +45,10 @@ async def _elevenlabs_tts(text: str, voice_id: str = "", voice_style: str = "") 
         }
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, json=data, headers=headers, timeout=30.0)
-        if response.status_code != 200:
-            raise ValueError(f"ElevenLabs API Error: {response.text}")
-        return base64.b64encode(response.content).decode('utf-8')
+    response = await _http_client.post(url, json=data, headers=headers)
+    if response.status_code != 200:
+        raise ValueError(f"ElevenLabs API Error: {response.text}")
+    return base64.b64encode(response.content).decode('utf-8')
 
 
 async def _gtts_tts(text: str, target_lang: str) -> str:

@@ -30,8 +30,8 @@ app.add_middleware(
 
 async def _run_warmup():
     from services.stt_whisper import get_whisper_model
-    from services.translation_nllb import get_nllb_resources
-    from services.tts_piper import get_piper_voice
+    from services.translation_nllb import get_nllb_resources, translate_nllb
+    from services.tts_piper import get_piper_voice, piper_tts
 
     print("[WARMUP] Pre-loading local models in background...")
 
@@ -43,7 +43,10 @@ async def _run_warmup():
 
     try:
         await asyncio.to_thread(get_nllb_resources)
-        print("[WARMUP] NLLB ready")
+        print("[WARMUP] NLLB weights loaded — running inference warmup...")
+        # Fire a short dummy translation to compile CUDA kernels now, not on first real request
+        await translate_nllb("Hello.", "en", "hi")
+        print("[WARMUP] NLLB inference kernels compiled and ready")
     except Exception as e:
         print(f"[WARMUP] NLLB skipped: {e}")
 
@@ -54,11 +57,18 @@ async def _run_warmup():
         except Exception as e:
             print(f"[WARMUP] Piper voice skipped ({lang}): {e}")
 
-    print("[WARMUP] Background pre-load complete — all available local models are ready")
+    try:
+        # Compile Piper's ONNX graph on first synthesis so it's not counted against first request
+        await piper_tts("Hello.", "en")
+        print("[WARMUP] Piper synthesis ready")
+    except Exception as e:
+        print(f"[WARMUP] Piper synthesis skipped: {e}")
+
+    print("[WARMUP] All models warmed up — first request will be full speed")
 
 @app.on_event("startup")
 async def warmup_local_models():
-    asyncio.create_task(_run_warmup())
+    await _run_warmup()
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -70,6 +80,7 @@ async def translate_audio_endpoint(
     target_lang: str = Form("hi"),
     stt_provider: str = Form("elevenlabs"),
     translation_provider: str = Form("gemini"),
+    tts_provider: str = Form("elevenlabs"),
     context_text: str = Form(""),
     glossary: str = Form(""),
     voice_id: str = Form("")
@@ -112,19 +123,26 @@ async def translate_audio_endpoint(
         trans_time = round(t3 - t2, 3)
         print(f"[TIMING] Translation ({translation_provider}): {trans_time}s")
 
-        # 3. Speech Execution
-        print("[DEBUG MAIN] Routing to fixed TTS provider: elevenlabs")
+        # 3. Speech Execution — unwrap Gemini auto-detect JSON before TTS
+        tts_text = translated_text
+        try:
+            parsed = json.loads(translated_text)
+            if isinstance(parsed, dict) and "translation" in parsed:
+                tts_text = parsed["translation"]
+        except Exception:
+            pass
+        print(f"[DEBUG MAIN] Routing to TTS provider: {tts_provider}")
         t4 = time.perf_counter()
-        audio_base64 = await generate_speech(translated_text, target_lang, voice_id=voice_id)
+        audio_base64 = await generate_speech(tts_text, target_lang, voice_id=voice_id, provider=tts_provider)
         t5 = time.perf_counter()
         tts_time = round(t5 - t4, 3)
         total_time = round(t5 - t0, 3)
-        print(f"[TIMING] TTS (elevenlabs): {tts_time}s")
+        print(f"[TIMING] TTS ({tts_provider}): {tts_time}s")
         print(f"[TIMING] Total pipeline: {total_time}s")
 
         return {
             "transcript": transcript,
-            "translated_text": translated_text,
+            "translated_text": tts_text,
             "audio_base64": audio_base64,
             "timing": {
                 "stt_time": stt_time,
@@ -133,7 +151,7 @@ async def translate_audio_endpoint(
                 "total_time": total_time,
                 "stt_provider": stt_provider,
                 "translation_provider": translation_provider,
-                "tts_provider": "elevenlabs"
+                "tts_provider": tts_provider
             }
         }
         
@@ -154,6 +172,7 @@ async def translate_multi_endpoint(
     target_langs: str = Form("hi"), # comma separated
     stt_provider: str = Form("elevenlabs"),
     translation_provider: str = Form("gemini"),
+    tts_provider: str = Form("elevenlabs"),
     context_text: str = Form(""),
     glossary: str = Form(""),
     voice_id: str = Form("")
@@ -166,6 +185,8 @@ async def translate_multi_endpoint(
     requested_langs = [l.strip() for l in target_langs.split(",") if l.strip()]
     if not requested_langs:
         raise HTTPException(status_code=400, detail="No target languages provided")
+    if len(requested_langs) > 10:
+        raise HTTPException(status_code=400, detail="Too many target languages. Maximum is 10.")
 
     try:
         t0 = time.perf_counter()
@@ -194,13 +215,13 @@ async def translate_multi_endpoint(
         if not transcript:
             return {"error": "Could not understand audio.", "transcript": "", "translations": []}
 
-        async def _process_lang(tgt_lang):
-            import json as _json
-            t2 = time.perf_counter()
+        import json as _json
+
+        async def _translate_lang(tgt_lang):
             translated_text = await translate_text(transcript, source_lang, tgt_lang, provider=translation_provider, context=context_text, glossary=glossary)
-            t3 = time.perf_counter()
-            # Gemini auto-detect returns JSON {"detected_language":…,"translation":…}
-            # Extract the plain translation string before passing to TTS
+            return tgt_lang, translated_text
+
+        async def _tts_lang(tgt_lang, translated_text):
             tts_text = translated_text
             try:
                 parsed = _json.loads(translated_text)
@@ -208,40 +229,69 @@ async def translate_multi_endpoint(
                     tts_text = parsed["translation"]
             except Exception:
                 pass
-            audio_base64 = await generate_speech(tts_text, tgt_lang, voice_id=voice_id)
-            t4 = time.perf_counter()
-            return {
-                "lang": tgt_lang,
-                "translated_text": translated_text,
-                "audio_base64": audio_base64,
-                "_trans_time": t3 - t2,
-                "_tts_time": t4 - t3,
-            }
+            audio_base64 = await generate_speech(tts_text, tgt_lang, voice_id=voice_id, provider=tts_provider)
+            return tgt_lang, audio_base64
 
-        # Run all languages in parallel
-        results = await asyncio.gather(*[_process_lang(lang) for lang in requested_langs])
+        # Phase 1: all translations in parallel — wall-clock = slowest single translation
+        t_trans_start = time.perf_counter()
+        trans_results = await asyncio.gather(*[_translate_lang(lang) for lang in requested_langs], return_exceptions=True)
+        trans_wall = round(time.perf_counter() - t_trans_start, 3)
 
+        # Build translation map; mark failed langs
+        trans_map = {}
         translations = []
-        overall_trans_time = 0
-        overall_tts_time = 0
-        for r in results:
-            overall_trans_time += r.pop("_trans_time")
-            overall_tts_time += r.pop("_tts_time")
-            translations.append(r)
+        for lang, r in zip(requested_langs, trans_results):
+            if isinstance(r, Exception):
+                translations.append({"lang": lang, "error": str(r)})
+            else:
+                _, translated_text = r
+                try:
+                    parsed = json.loads(translated_text)
+                    if isinstance(parsed, dict) and "translation" in parsed:
+                        translated_text = parsed["translation"]
+                except Exception:
+                    pass
+                trans_map[lang] = translated_text
+
+        # Phase 2: TTS for successful translations in parallel — wall-clock = slowest single TTS
+        t_tts_start = time.perf_counter()
+        tts_langs = [lang for lang in requested_langs if lang in trans_map]
+        tts_results = await asyncio.gather(
+            *[_tts_lang(lang, trans_map[lang]) for lang in tts_langs],
+            return_exceptions=True
+        )
+        tts_wall = round(time.perf_counter() - t_tts_start, 3)
+
+        for lang, r in zip(tts_langs, tts_results):
+            if isinstance(r, Exception):
+                translations.append({"lang": lang, "error": str(r)})
+            else:
+                _, audio_base64 = r
+                translations.append({
+                    "lang": lang,
+                    "translated_text": trans_map[lang],
+                    "audio_base64": audio_base64,
+                })
+
+        # Restore original lang order
+        lang_order = {lang: i for i, lang in enumerate(requested_langs)}
+        translations.sort(key=lambda x: lang_order.get(x.get("lang", ""), 999))
 
         total_time = round(time.perf_counter() - t0, 3)
+        print(f"[TIMING] Multi Trans wall ({translation_provider}): {trans_wall}s | TTS wall ({tts_provider}): {tts_wall}s | Total: {total_time}s")
 
         return {
             "transcript": transcript,
             "translations": translations,
             "timing": {
                 "stt_time": stt_time,
-                "translation_time": round(overall_trans_time, 3),
-                "tts_time": round(overall_tts_time, 3),
+                "translation_time": trans_wall,
+                "tts_time": tts_wall,
                 "total_time": total_time,
                 "stt_provider": stt_provider,
                 "translation_provider": translation_provider,
-                "tts_provider": "elevenlabs"
+                "tts_provider": tts_provider,
+                "lang_count": len(requested_langs),
             }
         }
         
@@ -297,10 +347,32 @@ async def translate_text_file_endpoint(
             # Wait, for files, we might just pass glossary. 
             print(f"[DEBUG FILE-TRANSLATE] Extracted {len(original_text)} chars. Translating with {translation_provider}...")
             t0 = time.perf_counter()
-            translated_text = await translate_text(original_text, source_lang, target_lang, provider=translation_provider, context=context_text, glossary=glossary)
+
+            if translation_provider == "nllb":
+                # NLLB's internal chunker greedily combines short sentences into one chunk,
+                # then NLLB drops sentences from that combined blob. Fix: split into sentences
+                # here and translate each one independently so NLLB gets one sentence at a time.
+                import re as _re
+                sentences = [s.strip() for s in _re.split(r'(?<=[.!?;।])\s+', original_text.strip()) if s.strip()]
+                print(f"[DEBUG FILE-TRANSLATE] NLLB mode: translating {len(sentences)} sentences individually")
+                translated_parts = []
+                for sent in sentences:
+                    part = await translate_text(sent, source_lang, target_lang, provider=translation_provider, context=context_text, glossary=glossary)
+                    translated_parts.append(part)
+                translated_text = " ".join(translated_parts)
+            else:
+                translated_text = await translate_text(original_text, source_lang, target_lang, provider=translation_provider, context=context_text, glossary=glossary)
+
             t1 = time.perf_counter()
             trans_time = round(float(t1 - t0), 3)  # type: ignore
             print(f"[TIMING] File translation ({translation_provider}): {trans_time}s")
+
+            try:
+                parsed = json.loads(translated_text)
+                if isinstance(parsed, dict) and "translation" in parsed:
+                    translated_text = parsed["translation"]
+            except Exception:
+                pass
 
             return {
                 "original_text": original_text,

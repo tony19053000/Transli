@@ -97,9 +97,9 @@ export default function Documentation() {
       </header>
 
       {/* Main Workspace */}
-      <main className="ml-64 flex h-[calc(100vh-64px)] justify-center overflow-y-auto custom-scrollbar">
+      <main className="ml-64 h-[calc(100vh-64px)] overflow-y-auto custom-scrollbar">
         
-        <div className="w-full max-w-5xl p-8 flex flex-col gap-6 pb-24">
+        <div className="w-full max-w-5xl mx-auto p-8 flex flex-col gap-6 pb-24">
           
           <div className="flex items-center justify-between mb-4">
             <div>
