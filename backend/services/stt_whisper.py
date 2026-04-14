@@ -2,13 +2,8 @@ import whisper
 import asyncio
 import os
 import threading
-import torch
 
-# Max GPU throughput settings (Ampere / RTX 30xx series)
-torch.backends.cudnn.benchmark = True
-torch.set_float32_matmul_precision("high")  # enables TF32 on Ampere GPUs
-
-_DEVICE = "cuda"
+_DEVICE = "cpu"
 
 # Global model cache to avoid reloading on every request
 _model_cache = {}
@@ -40,7 +35,7 @@ async def transcribe_whisper(file_path: str, source_lang: str, model_name: str =
         print(f"[DEBUG WHISPER] Starting transcription with model={model_name} on {_DEVICE}")
         loop = asyncio.get_event_loop()
         whisper_lang = None if source_lang == "auto" else _WHISPER_LANG_NORM.get(source_lang, source_lang)
-        kwargs = {"task": "transcribe", "fp16": _DEVICE == "cuda"}
+        kwargs = {"task": "transcribe", "fp16": False}
         if whisper_lang:
             kwargs["language"] = whisper_lang
         if prompt:

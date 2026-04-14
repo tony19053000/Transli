@@ -4,19 +4,15 @@ import threading
 import torch
 from typing import Optional as _Optional
 
-if not torch.cuda.is_available():
-    raise RuntimeError("NLLB requires a CUDA GPU. No GPU detected.")
-_DEVICE = "cuda"
-_DTYPE  = torch.float16
+_DEVICE = "cpu"
+_DTYPE  = torch.float32
 
 # Global cache for NLLB
 _nllb_cache = {}
 _nllb_lock = threading.Lock()
 
-# Semaphore to serialize GPU inference — NLLB model.generate() is not thread-safe
+# Semaphore to serialize NLLB inference — model.generate() is not thread-safe
 # when called concurrently from multiple threads on the same model instance.
-# This prevents concurrent GPU calls from corrupting each other's outputs and
-# avoids OOM from stacking beam-search activations.
 _nllb_inference_semaphore: _Optional[asyncio.Semaphore] = None
 
 def _get_inference_semaphore() -> asyncio.Semaphore:
