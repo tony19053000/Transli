@@ -16,7 +16,10 @@ RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
 
-# Install Python dependencies first (better layer caching)
+# Install CPU-only PyTorch first (avoids pulling multi-GB CUDA packages)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining Python dependencies
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
