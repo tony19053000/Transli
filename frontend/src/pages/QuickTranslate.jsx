@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import API_BASE from '../config/api';
 import { 
   Mic, Square, Loader2, Play, Pause, RotateCcw, AlertCircle, Copy, Download, 
   Check, Edit3, X, ArrowRightLeft, Type, Volume2, Save, Trash2, RefreshCw,
@@ -272,7 +273,7 @@ export default function QuickTranslate({
       formData.append('tts_provider', ttsProvider || 'elevenlabs');
       if (preferLocalMode) formData.append('prefer_local', 'true');
 
-      const response = await fetch('http://localhost:8000/api/translate-multi', {
+      const response = await fetch(`${API_BASE}/api/translate-multi`, {
         method: 'POST',
         body: formData,
         signal: controller.signal,

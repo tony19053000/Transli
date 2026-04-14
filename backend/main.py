@@ -14,10 +14,13 @@ from services.tts import generate_speech
 
 app = FastAPI(title="AI Voice Translator API")
 
-# Harden CORS for frontend integration correctly
+# CORS — origins controlled via ALLOWED_ORIGINS env var (comma-separated).
+# Defaults to local dev servers; set to your Vercel URL in production.
+_default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import API_BASE from '../config/api';
 import {
   FileText, Upload, Loader2, AlertCircle, Download, Play, Pause, RotateCcw,
   X, Copy, Check, ArrowRightLeft, Trash2, RefreshCw, Save, Image, Headphones,
@@ -305,7 +306,7 @@ export default function FileTranslation({
         formData.append('stt_provider', sttProvider);
         formData.append('translation_provider', translationProvider);
 
-        const res = await fetch('http://localhost:8000/api/translate', { method: 'POST', body: formData });
+        const res = await fetch(`${API_BASE}/api/translate`, { method: 'POST', body: formData });
         if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Audio processing failed'); }
         const data = await res.json();
         if (data.error) throw new Error(data.error);
@@ -348,7 +349,7 @@ export default function FileTranslation({
         formData.append('target_lang', targetLang);
         formData.append('translation_provider', translationProvider);
 
-        const res = await fetch('http://localhost:8000/api/translate-text', { method: 'POST', body: formData });
+        const res = await fetch(`${API_BASE}/api/translate-text`, { method: 'POST', body: formData });
         if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Text processing failed'); }
         const data = await res.json();
 
@@ -396,7 +397,7 @@ export default function FileTranslation({
     formData.append('text', result.original);
     formData.append('translation_provider', translationProvider);
     try {
-      const res = await fetch('http://localhost:8000/api/summarize', { method: 'POST', body: formData });
+      const res = await fetch(`${API_BASE}/api/summarize`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Failed to summarize');
       const data = await res.json();
       setSummary(data.summary);
@@ -423,7 +424,7 @@ export default function FileTranslation({
     formData.append('translation_provider', translationProvider);
 
     try {
-      const res = await fetch('http://localhost:8000/api/translate-text', { method: 'POST', body: formData });
+      const res = await fetch(`${API_BASE}/api/translate-text`, { method: 'POST', body: formData });
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Re-translation failed'); }
       const data = await res.json();
 
@@ -517,7 +518,7 @@ export default function FileTranslation({
       const formData = new FormData();
       formData.append('text', text.trim().substring(0, 5000)); // limit to prevent huge TTS calls
       formData.append('lang', lang);
-      const res = await fetch('http://localhost:8000/api/tts', { method: 'POST', body: formData });
+      const res = await fetch(`${API_BASE}/api/tts`, { method: 'POST', body: formData });
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'TTS failed'); }
       const data = await res.json();
       if (data.audio_base64) {
